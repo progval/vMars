@@ -94,7 +94,7 @@ class TestWarrior(unittest.TestCase):
     def setUp(self):
         self._memory = core.Memory()
 
-    def testThreads(self):
+    def testImp(self):
         ptr = 10
         warrior = core.Warrior(imp)
         self.assertRaises(ValueError, warrior.initial_program)
@@ -105,6 +105,29 @@ class TestWarrior(unittest.TestCase):
         self.assertEqual(warrior.threads, [ptr+1])
         warrior.run(self._memory)
         self.assertEqual(warrior.threads, [ptr+2])
+
+    def testDwarf(self):
+        dat1 = core.Instruction('DAT', None, '$0', '$0')
+        dat2 = core.Instruction('DAT', None, '#0', '#0')
+        dat3 = core.Instruction('DAT', None, '#0', '#4')
+        ptr = 100
+        warrior = core.Warrior(dwarf)
+        self.assertRaises(ValueError, warrior.initial_program)
+        self.assertEqual(warrior.initial_program(ptr), dwarf)
+        self.assertEqual(warrior.threads, [ptr])
+        self._memory.load(ptr, warrior)
+        self.assertEqual(self._memory.read(ptr+3), dat2)
+        self.assertEqual(self._memory.read(ptr+3+4), dat1)
+        warrior.run(self._memory) # ADD
+        self.assertEqual(warrior.threads, [ptr+1])
+        self.assertEqual(self._memory.read(ptr+3), dat3)
+        self.assertEqual(self._memory.read(ptr+3+4), dat1)
+        warrior.run(self._memory) # MOV
+        self.assertEqual(warrior.threads, [ptr+2])
+        self.assertEqual(self._memory.read(ptr+3+4), dat3)
+        warrior.run(self._memory) # JMP
+        self.assertEqual(warrior.threads, [ptr])
+        self.assertEqual(self._memory.read(ptr+3+4), dat3)
 
 
 

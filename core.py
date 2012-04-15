@@ -6,10 +6,12 @@ __all__ = ['RedcodeSyntaxError', 'Instruction']
 import re
 
 class SYNTAX:
-    field = '[#$*@{<}>]?[0-9]+'
-    line = re.compile((' *(?P<opcode>[A-Z]{3})'
+    addressing = '#$*@{}<>'
+
+    field = '[ %s]?[0-9-]+' % addressing
+    line = re.compile(('\s*(?P<opcode>[A-Z]{3})'
                        '(.(?P<modifier>[A-Z]{1,2}))?'
-                       '( +(?P<A>%s)(, *(?P<B>%s))?)?'
+                       '(\s+(?P<A>%s)(\s*,\s*(?P<B>%s))?)?'
                       ) % ((field,)*2)
                      )
     data_blocks = ('opcode', 'modifier', 'A', 'B')
@@ -18,8 +20,6 @@ class SYNTAX:
             'SLT LDP STP NOP').split()
 
     modifiers = 'A B AB BA F I X'.split()
-
-    addressing = '#$*@{}<>'
 
     @classmethod
     def is_operand(cls, value):
@@ -112,10 +112,10 @@ class Instruction(object):
     def _set_A(self, value):
         if value is None:
             value = '$0'
-        if value[0] in '0123456789':
+        if value[0] in '0123456789-':
             value = '$' + value
         if not SYNTAX.is_operand(value):
-            raise ValueError('%r is not a valid operand')
+            raise ValueError('%r is not a valid operand' % value)
         self._data['A'] = value
     A = property(_get_A, _set_A)
     def _get_B(self):
@@ -123,7 +123,7 @@ class Instruction(object):
     def _set_B(self, value):
         if value is None:
             value = '$0'
-        if value[0] in '0123456789':
+        if value[0] in '0123456789-':
             value = '$' + value
         if not SYNTAX.is_operand(value):
             raise ValueError('%r is not a valid operand')
@@ -220,16 +220,33 @@ class Instruction(object):
         else:
             assert False
 
+    def _math(self, data, function):
+        "Shortcut for running math operations."
+        (A, B) = data
+        assert None not in (A[2], B[2])
+        res1 = B[2][0]+str(function(int(A[2][1:]), int(B[2][1:])))
+        res2 = None
+        if A[3] is not None:
+            assert B[3] is not None
+            res2 = B[3][0]+str(function(int(A[3][1:]), int(B[3][1:])))
+        return (B[0], B[1], res1, res2)
     def run(self, memory, ptr):
         assert memory.read(ptr) == self
         oc = self.opcode
+        data = self._read(memory, ptr)
         if oc == 'DAT':
             return []
         elif oc == 'MOV':
-            self._write(memory, ptr, self._read(memory, ptr)[0])
+            self._write(memory, ptr, data[0])
             return [ptr+1]
+        elif oc == 'ADD':
+            self._write(memory, ptr, self._math(data, lambda x,y:x+y))
+            return [ptr+1]
+        elif oc == 'JMP':
+            # Note that the modifier is ignored
+            return [memory.get_absolute_ptr(ptr, self.A)]
         else:
-            raise NotImplemented()
+            raise NotImplementedError()
 
 class Memory(object):
     def __init__(self, size=8000):
@@ -286,9 +303,9 @@ class Memory(object):
         elif char == '$':
             return ptr
         elif char == '*':
-            return ptr + value2.A
+            return ptr + int(value2.A[1:])
         elif char == '@':
-            return ptr + value2.B
+            return ptr + int(value2.B[1:])
         elif char in '{}':
             return base_ptr + int(value2.A[1:])
         elif char in '<>':
