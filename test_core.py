@@ -248,23 +248,25 @@ class TestMemory(VMarsTestCase):
     def testLoad(self):
         warrior = core.Warrior(imp)
         self._memory.load(10, warrior)
-        self.assertEqual(self._memory.read(10), warrior.initial_program())
+        self.assertEqual([self._memory.read(10)], warrior.initial_program())
 
         ptr = 200
         warrior2 = core.Warrior(dwarf)
         self._memory.load(ptr, warrior2)
-        for line in warrior2.initial_program().split('\n'):
-            if not all([x in ' \n\t' for x in line]):
-                self.assertEqual(self._memory.read(ptr),
-                        core.Instruction.from_string(line))
-                ptr += 1
+        for inst in warrior2.initial_program():
+            self.assertEqual(self._memory.read(ptr), inst)
+            ptr += 1
 
 class TestWarrior(VMarsTestCase):
+    def testCompiledLoad(self):
+        self.assertEqual(core.Warrior(imp),
+                core.Warrior([core.Instruction.from_string(imp)], 0))
+
     def testImp(self):
         ptr = 10
         warrior = core.Warrior(imp)
         self.assertRaises(ValueError, warrior.initial_program)
-        self.assertEqual(warrior.initial_program(ptr).strip(), imp.strip())
+        warrior.initial_program(ptr)
         self.assertEqual(warrior.threads, [ptr])
         self._memory.load(ptr, warrior)
         warrior.run(self._memory)
@@ -280,7 +282,7 @@ class TestWarrior(VMarsTestCase):
         ptr = 100
         warrior = core.Warrior(dwarf)
         self.assertRaises(ValueError, warrior.initial_program)
-        self.assertEqual(warrior.initial_program(ptr).strip(), dwarf.strip())
+        warrior.initial_program(ptr)
         self.assertEqual(warrior.threads, [ptr])
         self._memory.load(ptr, warrior)
         self.assertEqual(self._memory.read(ptr+3), dat2)

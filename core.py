@@ -414,11 +414,9 @@ class Memory(object):
         if not isinstance(ptr, int):
             raise ValueError('Pointer must be an integer, not %r.' % ptr)
 
-        for line in warrior.initial_program(ptr).split('\n'):
-            inst = Instruction.from_string(line)
+        for (i, inst) in enumerate(warrior.initial_program(ptr)):
             if inst is not None:
-                self.write(ptr, inst)
-                ptr += 1
+                self.write(ptr + i, inst)
             
 class MarsProperties(object):
     def __init__(self, **kwargs):
@@ -465,18 +463,37 @@ class Mars(object):
             return warrior
 
 class Warrior(object):
-    def __init__(self, program=''):
-        if not isinstance(program, str):
-            raise ValueError('Program must be a string, not %r.' % program)
-        self._origin = 0
-        self._initial_program = ''
-        for line in program.split('\n'):
-            if 'ORG ' in line:
-                self._origin = int(line.split('ORG ')[1])
-            else:
-                self._initial_program += line + '\n'
+    def __init__(self, program='', origin=None):
+        if origin is not None:
+            if not isinstance(program, list):
+                raise ValueError('If you supply the `origin` argument, it '
+                        'means you are giving a list of Instruction '
+                        'instances, not %r' % program)
+            if not all([isinstance(x, Instruction) for x in program]):
+                raise ValueError('%r is not a list of Instruction instances.' %
+                        program)
+            self._origin = origin
+            self._initial_program = program
+        else:
+            if isinstance(program, list):
+                raise ValueError('If you supply a list as the program, you '
+                        'have to give the `origin` argument.')
+            elif not isinstance(program, str):
+                raise ValueError('Program must be a string, not %r.' % program)
+            self._origin = 0
+            self._initial_program = []
+            for line in program.split('\n'):
+                if 'ORG ' in line:
+                    self._origin = int(line.split('ORG ')[1])
+                else:
+                    inst = Instruction.from_string(line)
+                    if inst is not None:
+                        self._initial_program.append(inst)
         self._threads = None
-    
+
+    def __eq__(self, other):
+        return self._initial_program == other._initial_program
+
     @property
     def threads(self):
         return [x for x in self._threads] # Shallow copy
