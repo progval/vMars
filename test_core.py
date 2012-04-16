@@ -10,10 +10,13 @@ dwarf = '''
         DAT    #0, #0
         '''
 
-class TestInstruction(unittest.TestCase):
+class VMarsTestCase(unittest.TestCase):
     def setUp(self):
-        self._memory = core.Memory()
+        self._properties = core.MarsProperties(coresize=200)
+        self._mars = core.Mars(self._properties)
+        self._memory = self._mars.memory
 
+class TestInstruction(VMarsTestCase):
     def testMagic(self):
         """Test magic methods"""
         inst = core.Instruction('DAT', None, '$0', '$0')
@@ -226,13 +229,10 @@ class TestInstruction(unittest.TestCase):
 
 
 
-class TestMemory(unittest.TestCase):
-    def setUp(self):
-        self._memory = core.Memory()
-
+class TestMemory(VMarsTestCase):
     def testSize(self):
-        self.assertEqual(self._memory.size, 8000)
-        self.assertIs(self._memory.read(1), self._memory.read(8001))
+        self.assertEqual(self._memory.size, 200)
+        self.assertIs(self._memory.read(1), self._memory.read(201))
 
     def testRead(self):
         for i in range(0, 10):
@@ -259,10 +259,7 @@ class TestMemory(unittest.TestCase):
                         core.Instruction.from_string(line))
                 ptr += 1
 
-class TestWarrior(unittest.TestCase):
-    def setUp(self):
-        self._memory = core.Memory()
-
+class TestWarrior(VMarsTestCase):
     def testImp(self):
         ptr = 10
         warrior = core.Warrior(imp)

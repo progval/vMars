@@ -345,7 +345,7 @@ class Instruction(object):
         return threads
 
 class Memory(object):
-    def __init__(self, size=8000):
+    def __init__(self, size):
         if not isinstance(size, int):
             raise ValueError('Memory size must be an integer, not %r' % size)
         self._size = size
@@ -420,11 +420,41 @@ class Memory(object):
                 self.write(ptr, inst)
                 ptr += 1
             
+class MarsProperties(object):
+    def __init__(self, **kwargs):
+        self._data = {
+                'coresize': 8000,
+                'maxcycles': 80000,
+                'maxprocesses': 8000,
+                'maxlength': 100,
+                'mindistance': 100,
+                }
+        for key in kwargs:
+            if key not in self._data:
+                raise ValueError('%r is not a known key.' % key)
+        self._data.update(kwargs)
+
+    def __getattr__(self, name):
+        return self._data[name]
 
 class Mars(object):
-    def __init__(self, size, warriors):
-        self._memory = Memory(size)
-        self._warriors = warriors
+    def __init__(self, properties):
+        self._memory = Memory(properties.coresize)
+        self._warriors = []
+
+    @property
+    def memory(self):
+        return self._memory
+
+    @property
+    def warriors(self):
+        return self._warriors
+
+    def load(self, warrior):
+        self._memory.load(len(self.warriors) *
+                (self._properties.maxlength + self._properties.mindistance),
+                warrior)
+        self._warriors.append(warrior)
 
     def run(self):
         warrior = self._warriors.pop(0)
