@@ -1,9 +1,20 @@
 
 """This is the memory of the MARS."""
 
-__all__ = ['RedcodeSyntaxError', 'Instruction']
+__all__ = ['RedcodeSyntaxError', 'Instruction', 'Mars', 'Memory', 'Warrior']
 
 import re
+
+def get_int(operand):
+    """Shortcut for extracting the integer from an operand."""
+    if len(operand) < 1:
+        raise ValueError('%r is not a valid operand' % operand)
+    if operand[0] in SYNTAX.addressing:
+        if len(operand) < 1:
+            raise ValueError('%r is not a valid operand' % operand)
+        return int(operand[1:])
+    else:
+        return int(operand)
 
 class SYNTAX:
     addressing = '#$*@{}<>'
@@ -28,7 +39,7 @@ class SYNTAX:
         if value[0] not in SYNTAX.addressing:
             return False
         try:
-            int(value[1:])
+            get_int(value)
         except ValueError:
             return False
         return True
@@ -224,11 +235,11 @@ class Instruction(object):
         "Shortcut for running math operations."
         (A, B) = data
         assert None not in (A[2], B[2])
-        res1 = B[2][0]+str(function(int(A[2][1:]), int(B[2][1:])))
+        res1 = B[2][0]+str(function(get_int(A[2]), get_int(B[2])))
         res2 = None
         if A[3] is not None:
             assert B[3] is not None
-            res2 = B[3][0]+str(function(int(A[3][1:]), int(B[3][1:])))
+            res2 = B[3][0]+str(function(get_int(A[3]), get_int(B[3])))
         return (B[0], B[1], res1, res2)
     def run(self, memory, ptr):
         assert memory.read(ptr) == self
@@ -236,15 +247,70 @@ class Instruction(object):
         data = self._read(memory, ptr)
         if oc == 'DAT':
             return []
+        elif oc == 'NOP':
+            return [ptr+1]
         elif oc == 'MOV':
             self._write(memory, ptr, data[0])
             return [ptr+1]
         elif oc == 'ADD':
-            self._write(memory, ptr, self._math(data, lambda x,y:x+y))
+            self._write(memory, ptr, self._math(data, lambda a,b:a+b))
             return [ptr+1]
+        elif oc == 'SUB':
+            self._write(memory, ptr, self._math(data, lambda a,b:b-a))
+            return [ptr+1]
+        elif oc == 'MUL':
+            self._write(memory, ptr, self._math(data, lambda a,b:a*b))
+            return [ptr+1]
+        elif oc == 'DIV':
+            try:
+                self._write(memory, ptr, self._math(data, lambda a,b:int(b/a)))
+                return [ptr+1]
+            except ZeroDivisionError:
+                return []
+        elif oc == 'MOD':
+            try:
+                self._write(memory, ptr, self._math(data, lambda a,b:b%a))
+                return [ptr+1]
+            except ZeroDivisionError:
+                return []
         elif oc == 'JMP':
             # Note that the modifier is ignored
             return [memory.get_absolute_ptr(ptr, self.A)]
+        elif oc == 'JMZ':
+            if get_int(data[1][2]) == 0 and \
+                    (data[1][3] is None or get_int(data[1][3]) == 0):
+                return [memory.get_absolute_ptr(ptr, self.A)]
+            else:
+                return [ptr+1]
+        elif oc == 'JMN':
+            if get_int(data[1][2]) == 0 and \
+                    (data[1][3] is None or get_int(data[1][3]) == 0):
+                return [ptr+1]
+            else:
+                return [memory.get_absolute_ptr(ptr, self.A)]
+        elif oc == 'DJN':
+            self.B = self.B[0] + str(get_int(self.B)-1)
+            data = self._read(memory, ptr) # Load the new pointed data
+
+            # Jump
+            if get_int(data[1][2]) == 0 and \
+                    (data[1][3] is None or get_int(data[1][3]) == 0):
+                return [ptr+1]
+            else:
+                return [memory.get_absolute_ptr(ptr, self.A)]
+        elif oc == 'CMP' or oc == 'SEQ':
+            if data[0] == data[1]:
+                return [ptr+2]
+            else:
+                return [ptr+1]
+        elif oc == 'SLT':
+            if get_int(data[0][2]) < get_int(data[1][2]) and \
+                    (data[0][3] is None or data[0][3] < data[1][3]):
+                return [ptr+2]
+            else:
+                return [ptr+1]
+        elif oc == 'SPL':
+            return [ptr+1, ptr+get_int(self.A)]
         else:
             raise NotImplementedError()
 
@@ -293,7 +359,7 @@ class Memory(object):
             raise ValueError('The operand can be only A or B')
         if not isinstance(base_ptr, int):
             raise ValueError('Pointer must be an integer, not %r.' % base_ptr)
-        ptr = base_ptr + int(value[1:])
+        ptr = base_ptr + get_int(value)
         char = value[0]
         if char not in '#$':
             value2 = self.read(ptr)
@@ -303,13 +369,13 @@ class Memory(object):
         elif char == '$':
             return ptr
         elif char == '*':
-            return ptr + int(value2.A[1:])
+            return ptr + get_int(value2.A)
         elif char == '@':
-            return ptr + int(value2.B[1:])
+            return ptr + get_int(value2.B)
         elif char in '{}':
-            return base_ptr + int(value2.A[1:])
+            return base_ptr + get_int(value2.A)
         elif char in '<>':
-            return base_ptr + int(value2.B[1:])
+            return base_ptr + get_int(value2.B)
 
     def load(self, ptr, warrior):
         if not isinstance(warrior, Warrior):

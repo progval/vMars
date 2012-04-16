@@ -57,6 +57,155 @@ class TestInstruction(unittest.TestCase):
         inst.run(self._memory, 100)
         self.assertEqual(self._memory.read(101), 'DAT 0, 1')
 
+    def testAdd(self):
+        inst = core.Instruction.from_string('ADD #5, 2')
+        self._memory.write(10, inst)
+        inst.run(self._memory, 10)
+        self.assertEqual(self._memory.read(12).A, '$0')
+        self.assertEqual(self._memory.read(12).B, '$5')
+
+        inst = core.Instruction.from_string('ADD.A #5, 2')
+        self._memory.write(20, inst)
+        inst.run(self._memory, 20)
+        self.assertEqual(self._memory.read(22).A, '$5')
+        self.assertEqual(self._memory.read(22).B, '$0')
+
+        inst = core.Instruction.from_string('ADD.A #5, 2')
+        self._memory.write(30, inst)
+        inst.run(self._memory, 30)
+        self.assertEqual(self._memory.read(32).A, '$5')
+        self.assertEqual(self._memory.read(32).B, '$0')
+
+        warrior = core.Warrior('ADD #5, 2')
+        self._memory.load(40, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(self._memory.read(42).A, '$0')
+        self.assertEqual(self._memory.read(42).B, '$5')
+        self.assertEqual(warrior.threads, [41])
+
+    def testSub(self):
+        inst = core.Instruction.from_string('SUB #5, 2')
+        self._memory.write(10, inst)
+        inst.run(self._memory, 10)
+        self.assertEqual(self._memory.read(12).A, '$0')
+        self.assertEqual(self._memory.read(12).B, '$-5')
+
+        warrior = core.Warrior('SUB #5, 2')
+        self._memory.load(20, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(self._memory.read(22).A, '$0')
+        self.assertEqual(self._memory.read(22).B, '$-5')
+        self.assertEqual(warrior.threads, [21])
+
+    def testMul(self):
+        inst = core.Instruction.from_string('MUL #5, 2')
+        inst2 = core.Instruction.from_string('DAT $0, $7')
+        self._memory.write(10, inst)
+        self._memory.write(12, inst2)
+        inst.run(self._memory, 10)
+        self.assertEqual(self._memory.read(12).A, '$0')
+        self.assertEqual(self._memory.read(12).B, '$35')
+
+        self._memory.write(20, inst)
+        inst.run(self._memory, 20)
+        self.assertEqual(self._memory.read(22).A, '$0')
+        self.assertEqual(self._memory.read(22).B, '$0')
+
+    def testDiv(self):
+        warrior = core.Warrior('''DIV #5, 2
+                                  NOP
+                                  DAT $0, $32''')
+        self._memory.load(10, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(self._memory.read(12).A, '$0')
+        self.assertEqual(self._memory.read(12).B, '$6')
+        self.assertEqual(warrior.threads, [11])
+
+        warrior = core.Warrior('''DIV #0, 2
+                                  NOP
+                                  DAT $0, $32''')
+        self._memory.load(20, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(self._memory.read(22).A, '$0')
+        self.assertEqual(self._memory.read(22).B, '$32')
+        self.assertEqual(warrior.threads, [])
+
+    def testMod(self):
+        warrior = core.Warrior('''MOD #5, 2
+                                  NOP
+                                  DAT $0, $32''')
+        self._memory.load(10, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(self._memory.read(12).A, '$0')
+        self.assertEqual(self._memory.read(12).B, '$2')
+        self.assertEqual(warrior.threads, [11])
+
+        warrior = core.Warrior('''MOD #0, 2
+                                  NOP
+                                  DAT $0, $32''')
+        self._memory.load(20, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(self._memory.read(22).A, '$0')
+        self.assertEqual(self._memory.read(22).B, '$32')
+        self.assertEqual(warrior.threads, [])
+
+    def testJmz(self):
+        warrior = core.Warrior('''JMZ 5, #0''')
+        self._memory.load(10, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(warrior.threads, [15])
+
+        warrior = core.Warrior('''JMZ 5, #1''')
+        self._memory.load(20, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(warrior.threads, [21])
+
+        warrior = core.Warrior('''JMZ 5, 1
+                                  DAT 0, 0''')
+        self._memory.load(30, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(warrior.threads, [35])
+
+        warrior = core.Warrior('''JMZ 5, 1
+                                  DAT 0, 1''')
+        self._memory.load(40, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(warrior.threads, [41])
+
+    def testJmn(self):
+        warrior = core.Warrior('''JMN 5, #0''')
+        self._memory.load(10, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(warrior.threads, [11])
+
+        warrior = core.Warrior('''JMN 5, #1''')
+        self._memory.load(20, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(warrior.threads, [25])
+
+    def testDjn(self):
+        warrior = core.Warrior('''DJN 5, #1
+                                  JMP -1''')
+        self._memory.load(10, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(self._memory.read(10).B, '#0')
+        self.assertEqual(warrior.threads, [11])
+        warrior.run(self._memory)
+        warrior.run(self._memory)
+        self.assertEqual(self._memory.read(10).B, '#-1')
+        self.assertEqual(warrior.threads, [15])
+
+    def testSpl(self):
+        warrior = core.Warrior('''SPL 5
+                                  SPL -1''')
+        self._memory.load(10, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(warrior.threads, [11, 15])
+        warrior.run(self._memory)
+        self.assertEqual(warrior.threads, [15, 12, 10])
+
+
+
 class TestMemory(unittest.TestCase):
     def setUp(self):
         self._memory = core.Memory()
@@ -110,6 +259,7 @@ class TestWarrior(unittest.TestCase):
         dat1 = core.Instruction('DAT', None, '$0', '$0')
         dat2 = core.Instruction('DAT', None, '#0', '#0')
         dat3 = core.Instruction('DAT', None, '#0', '#4')
+        dat4 = core.Instruction('DAT', None, '#0', '#8')
         ptr = 100
         warrior = core.Warrior(dwarf)
         self.assertRaises(ValueError, warrior.initial_program)
@@ -128,6 +278,12 @@ class TestWarrior(unittest.TestCase):
         warrior.run(self._memory) # JMP
         self.assertEqual(warrior.threads, [ptr])
         self.assertEqual(self._memory.read(ptr+3+4), dat3)
+
+        warrior.run(self._memory) # ADD
+        warrior.run(self._memory) # MOV
+        warrior.run(self._memory) # JMP
+        self.assertEqual(warrior.threads, [ptr])
+        self.assertEqual(self._memory.read(ptr+3+8), dat4)
 
 
 
