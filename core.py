@@ -438,7 +438,13 @@ class Warrior(object):
     def __init__(self, program=''):
         if not isinstance(program, str):
             raise ValueError('Program must be a string, not %r.' % program)
-        self._initial_program = program
+        self._origin = 0
+        self._initial_program = ''
+        for line in program.split('\n'):
+            if 'ORG ' in line:
+                self._origin = int(line.split('ORG ')[1])
+            else:
+                self._initial_program += line + '\n'
         self._threads = None
     
     @property
@@ -450,7 +456,7 @@ class Warrior(object):
             raise ValueError('The load pointer must be provided before '
                     'accessing the program.')
         elif self._threads is None:
-            self._threads = [ptr]
+            self._threads = [ptr+self._origin]
         return self._initial_program
 
     def run(self, memory):

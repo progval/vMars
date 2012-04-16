@@ -267,7 +267,7 @@ class TestWarrior(unittest.TestCase):
         ptr = 10
         warrior = core.Warrior(imp)
         self.assertRaises(ValueError, warrior.initial_program)
-        self.assertEqual(warrior.initial_program(ptr), imp)
+        self.assertEqual(warrior.initial_program(ptr).strip(), imp.strip())
         self.assertEqual(warrior.threads, [ptr])
         self._memory.load(ptr, warrior)
         warrior.run(self._memory)
@@ -283,7 +283,7 @@ class TestWarrior(unittest.TestCase):
         ptr = 100
         warrior = core.Warrior(dwarf)
         self.assertRaises(ValueError, warrior.initial_program)
-        self.assertEqual(warrior.initial_program(ptr), dwarf)
+        self.assertEqual(warrior.initial_program(ptr).strip(), dwarf.strip())
         self.assertEqual(warrior.threads, [ptr])
         self._memory.load(ptr, warrior)
         self.assertEqual(self._memory.read(ptr+3), dat2)
@@ -304,6 +304,13 @@ class TestWarrior(unittest.TestCase):
         warrior.run(self._memory) # JMP
         self.assertEqual(warrior.threads, [ptr])
         self.assertEqual(self._memory.read(ptr+3+8), dat4)
+
+    def testOrigin(self):
+        warrior = core.Warrior('''ORG 2
+                                  DAT 0, 0
+                                  DAT 1, 1''')
+        self._memory.load(10, warrior)
+        self.assertEqual(warrior.threads, [12])
 
 
 
