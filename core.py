@@ -44,7 +44,6 @@ class SYNTAX:
             return False
         return True
 
-
 class RedcodeSyntaxError(Exception):
     pass
 
@@ -156,6 +155,10 @@ class Instruction(object):
         assert opcode is not None
         list_ = [(parsed.group(x).upper() if parsed.group(x) else None)
                     for x in SYNTAX.data_blocks]
+        if list_[0] == 'DAT' and list_[3] is None:
+            # See: http://vyznev.net/corewar/guide.html#deep_instr
+            list_[3] = list_[2]
+            list_[2] = None
         return cls(*list_)
 
     @classmethod
@@ -201,7 +204,7 @@ class Instruction(object):
             return (A.as_tuple, B.as_tuple)
         else:
             assert False
-    def _write(self, memory, ptr, inst):
+    def _write(self, memory, dest, inst):
         """Writes data to the memory"""
         m = self.modifier
         if isinstance(inst, tuple):
@@ -212,28 +215,28 @@ class Instruction(object):
         elif not isinstance(inst, Instruction):
             raise ValueError('You can only write tuples and instructions, '
                     'not %r' % inst)
+        if not isinstance(dest, int):
+            raise ValueError('Destination must be an int, not %r.' % dest)
 
-        ptr = memory.get_absolute_ptr(ptr, self.B)
         if m == 'A':
-            memory.write(ptr, A=inst.A)
+            memory.write(dest, A=inst.A)
         elif m == 'B':
-            memory.write(ptr, B=inst.A)
+            memory.write(dest, B=inst.A)
         elif m == 'AB':
-            memory.write(ptr, B=inst.A)
+            memory.write(dest, B=inst.A)
         elif m == 'BA':
-            memory.write(ptr, A=inst.A)
+            memory.write(dest, A=inst.A)
         elif m == 'F':
-            memory.write(ptr, A=inst.A, B=inst.B)
+            memory.write(dest, A=inst.A, B=inst.B)
         elif m == 'X':
-            memory.write(ptr, B=inst.B, A=inst.A)
+            memory.write(dest, B=inst.B, A=inst.A)
         elif m == 'I':
-            memory.write(ptr, instruction=inst)
+            memory.write(dest, instruction=inst)
         else:
             assert False
 
-    def _math(self, data, function):
+    def _math(self, A, B, function):
         "Shortcut for running math operations."
-        (A, B) = data
         assert None not in (A[2], B[2])
         res1 = B[2][0]+str(function(get_int(A[2]), get_int(B[2])))
         res2 = None
@@ -241,78 +244,105 @@ class Instruction(object):
             assert B[3] is not None
             res2 = B[3][0]+str(function(get_int(A[3]), get_int(B[3])))
         return (B[0], B[1], res1, res2)
+    def _increment(self, memory, ptr, field):
+        "Shortcut for incrementing fields."
+        inst = memory.read(ptr + get_int(field))
+        if field.startswith('}'):
+            inst.A = inst.A[0] + str(int(inst.A[1:])+1)
+        elif field.startswith('>'):
+            inst.B = inst.B[0] + str(int(inst.B[1:])+1)
     def run(self, memory, ptr):
         assert memory.read(ptr) == self
+
+        # Predecrement
+        for field in (self.A, self.B):
+            inst = memory.read(ptr + get_int(field))
+            if field.startswith('{'):
+                inst.A = inst.A[0] + str(int(inst.A[1:])-1)
+            elif field.startswith('<'):
+                inst.B = inst.B[0] + str(int(inst.B[1:])-1)
+
         oc = self.opcode
-        data = self._read(memory, ptr)
+
+        # Postincrement
+        # The order matters: http://www.koth.org/info/icws94.html#5.3.5
+        self._increment(memory, ptr, self.A)
+        dest = memory.get_absolute_ptr(ptr, self.B)
+        self._increment(memory, ptr, self.B)
+        A = self._read(memory, ptr)[0]
+        B = self._read(memory, ptr)[1]
+
         if oc == 'DAT':
-            return []
+            threads = []
         elif oc == 'NOP':
-            return [ptr+1]
+            threads = [ptr+1]
         elif oc == 'MOV':
-            self._write(memory, ptr, data[0])
-            return [ptr+1]
+            self._write(memory, dest, A)
+            threads = [ptr+1]
         elif oc == 'ADD':
-            self._write(memory, ptr, self._math(data, lambda a,b:a+b))
-            return [ptr+1]
+            self._write(memory, dest, self._math(A, B, lambda a,b:a+b))
+            threads = [ptr+1]
         elif oc == 'SUB':
-            self._write(memory, ptr, self._math(data, lambda a,b:b-a))
-            return [ptr+1]
+            self._write(memory, dest, self._math(A, B, lambda a,b:b-a))
+            threads = [ptr+1]
         elif oc == 'MUL':
-            self._write(memory, ptr, self._math(data, lambda a,b:a*b))
-            return [ptr+1]
+            self._write(memory, dest, self._math(A, B, lambda a,b:a*b))
+            threads = [ptr+1]
         elif oc == 'DIV':
             try:
-                self._write(memory, ptr, self._math(data, lambda a,b:int(b/a)))
-                return [ptr+1]
+                self._write(memory, dest, self._math(A, B, lambda a,b:int(b/a)))
+                threads = [ptr+1]
             except ZeroDivisionError:
-                return []
+                threads = []
         elif oc == 'MOD':
             try:
-                self._write(memory, ptr, self._math(data, lambda a,b:b%a))
-                return [ptr+1]
+                self._write(memory, dest, self._math(A, B, lambda a,b:b%a))
+                threads = [ptr+1]
             except ZeroDivisionError:
-                return []
+                threads = []
         elif oc == 'JMP':
             # Note that the modifier is ignored
-            return [memory.get_absolute_ptr(ptr, self.A)]
+            threads = [memory.get_absolute_ptr(ptr, self.A)]
         elif oc == 'JMZ':
-            if get_int(data[1][2]) == 0 and \
-                    (data[1][3] is None or get_int(data[1][3]) == 0):
-                return [memory.get_absolute_ptr(ptr, self.A)]
+            if get_int(B[2]) == 0 and \
+                    (B[3] is None or get_int(B[3]) == 0):
+                threads = [memory.get_absolute_ptr(ptr, self.A)]
             else:
-                return [ptr+1]
+                threads = [ptr+1]
         elif oc == 'JMN':
-            if get_int(data[1][2]) == 0 and \
-                    (data[1][3] is None or get_int(data[1][3]) == 0):
-                return [ptr+1]
+            if get_int(B[2]) == 0 and \
+                    (B[3] is None or get_int(B[3]) == 0):
+                threads = [ptr+1]
             else:
-                return [memory.get_absolute_ptr(ptr, self.A)]
+                threads = [memory.get_absolute_ptr(ptr, self.A)]
         elif oc == 'DJN':
             self.B = self.B[0] + str(get_int(self.B)-1)
-            data = self._read(memory, ptr) # Load the new pointed data
+            ptrB = memory.get_absolute_ptr(ptr, self.B)
+            B = self._read(memory, ptrB)[1] # Load the new pointed data
 
             # Jump
-            if get_int(data[1][2]) == 0 and \
-                    (data[1][3] is None or get_int(data[1][3]) == 0):
-                return [ptr+1]
+            if get_int(B[2]) == 0 and \
+                    (B[3] is None or get_int(B[3]) == 0):
+                threads = [ptr+1]
             else:
-                return [memory.get_absolute_ptr(ptr, self.A)]
+                threads = [memory.get_absolute_ptr(ptr, self.A)]
         elif oc == 'CMP' or oc == 'SEQ':
-            if data[0] == data[1]:
-                return [ptr+2]
+            if A == B:
+                threads = [ptr+2]
             else:
-                return [ptr+1]
+                threads = [ptr+1]
         elif oc == 'SLT':
-            if get_int(data[0][2]) < get_int(data[1][2]) and \
-                    (data[0][3] is None or data[0][3] < data[1][3]):
-                return [ptr+2]
+            if get_int(A[2]) < get_int(B[2]) and \
+                    (A[3] is None or A[3] < B[3]):
+                threads = [ptr+2]
             else:
-                return [ptr+1]
+                threads = [ptr+1]
         elif oc == 'SPL':
-            return [ptr+1, ptr+get_int(self.A)]
+            threads = [ptr+1, ptr+get_int(self.A)]
         else:
             raise NotImplementedError()
+
+        return threads
 
 class Memory(object):
     def __init__(self, size=8000):

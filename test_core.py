@@ -35,6 +35,26 @@ class TestInstruction(unittest.TestCase):
         self.assertIsNot(core.Instruction('DAT', None, '0', '0'),
                 core.Instruction('DAT', None, '0', '0'))
 
+    def testPredecrement(self):
+        warrior = core.Warrior('''MOV 1, {1
+                                  DAT 3, 0''')
+        self._memory.load(10, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(self._memory.read(11), 'DAT 2, 0')
+        self.assertEqual(self._memory.read(12), 'DAT 2, 0')
+        self.assertEqual(self._memory.read(13), 'DAT 0, 0')
+
+    def testPostincrement(self):
+        warrior = core.Warrior('''MOV 1, }1
+                                  DAT 2, 0''')
+        self._memory.load(10, warrior)
+        warrior.run(self._memory)
+        self.assertEqual(self._memory.read(11), 'DAT 3, 0')
+        self.assertEqual(self._memory.read(13), 'DAT 0, 0')
+        self.assertEqual(self._memory.read(12), 'DAT 3, 0')
+
+
+
     def testMov(self):
         # Basic test
         inst = core.Instruction.from_string('MOV 0, 1')
