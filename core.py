@@ -23,6 +23,7 @@ class SYNTAX:
     line = re.compile(('\s*(?P<opcode>[A-Z]{3})'
                        '(.(?P<modifier>[A-Z]{1,2}))?'
                        '(\s+(?P<A>%s)(\s*,\s*(?P<B>%s))?)?'
+                       '\s*(;.*)?'
                       ) % ((field,)*2)
                      )
     data_blocks = ('opcode', 'modifier', 'A', 'B')
