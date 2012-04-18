@@ -1,5 +1,8 @@
+#!/usr/bin/env python
 
 """Converts an assembly file into a load file."""
+
+from __future__ import print_function
 
 __all__ = ['Assembler', 'ParseError']
 
@@ -34,7 +37,7 @@ class Assembler(object):
                     'core.MarsProperties, not %r' % properties)
         self._properties = properties
 
-    def assemble(self, assembly):
+    def assemble(self, assembly, raw=False):
         if not isinstance(assembly, str):
             raise ValueError('The assembly code must be a string, not %r' %
                     assembly)
@@ -48,7 +51,8 @@ class Assembler(object):
                 if x not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-*/%':
                     raise ParseError('On line %i: `%s` is not a valid '%(j,x)+
                             'character')
-            context = constants.copy()
+            context = self._properties.as_dict
+            context.update(constants)
             context.update(dict([(x,y-i) for x,y in labels.items()]))
             context.update(variables)
             return addresser + str(eval(operand, context))
@@ -116,11 +120,76 @@ class Assembler(object):
                 load_queue.append((opcode, modifier, A, B))
                 i += 1
 
-        load = []
+        if raw:
+            load = 'ORG %i\n' % origin
+        else:
+            load = []
         for (i, (opcode, modifier, A, B)) in enumerate(load_queue):
                 A = evaluate_operand(A)
                 B = evaluate_operand(B)
                 inst = core.Instruction(opcode=opcode, modifier=modifier,
                         A=A, B=B)
-                load.append(inst)
+                if raw:
+                    load += str(inst) + '\n'
+                else:
+                    load.append(inst)
         return (origin, load)
+
+if __name__ == '__main__':
+    import os
+    import sys
+    import argparse
+    parser = argparse.ArgumentParser(
+            description='Assembles a RedCode assembly file into a load file.')
+    parser.add_argument('--force', '-f', action='store_true',
+            help='determines whether existing files will be overwritten')
+    parser.add_argument('warriors', metavar='warrior.red', type=file,
+            nargs='+', help='file to be assembled')
+
+    for (key, value) in core.MarsProperties().as_dict.items():
+        parser.add_argument('--' + key, default=value, type=int)
+
+    try:
+        args = vars(parser.parse_args())
+    except IOError as e: # Failed to open files
+        sys.stderr.write(str(e) + '\n')
+        sys.stderr.flush()
+        exit()
+
+    assemblies = args.pop('warriors')
+    force = args.pop('force')
+    properties = core.MarsProperties(**args)
+    assembler = Assembler(properties)
+    for assembly in assemblies:
+        if not assembly.name.endswith('.red'):
+            sys.stderr.write('%s does not end with .red.\n' % assembly.name)
+            sys.stderr.flush()
+            exit()
+        dest = assembly.name.replace('.red', '.rc')
+        name = os.path.split(dest)[1][0:-len('.rc')]
+        print('Assembling %s...' % name)
+        try:
+            load_file = assembler.assemble(assembly.read(), raw=True)
+        except ParseError as e:
+            print('\tError: %s' % e.args[0])
+            print('\tWarrior %s not assembled.' % name)
+            continue
+        print('\tWarrior %s successfully assembled.' % name)
+        print('\tWriting to %s' % dest)
+        if os.path.exists(dest):
+            if force:
+                print('\tFile %s exists, dropping it.' % dest)
+                try:
+                    os.unlink(dest)
+                except:
+                    print('\tError: Could not remove file. Warrior not '
+                        'written.')
+            else:
+                print('\tError: File %s exists, not writing warrior %s.' %
+                        (dest, name))
+                continue
+        try:
+            open(dest, 'w').write(load_file[1])
+        except Exception as e:
+            print('\tError: write failed, file may be corrupted.')
+            continue

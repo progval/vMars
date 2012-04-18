@@ -436,6 +436,10 @@ class MarsProperties(object):
     def __getattr__(self, name):
         return self._data[name]
 
+    @property
+    def as_dict(self):
+        return self._data.copy()
+
 class Mars(object):
     def __init__(self, properties):
         self._memory = Memory(properties.coresize)
