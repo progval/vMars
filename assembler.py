@@ -193,3 +193,4 @@ if __name__ == '__main__':
         except Exception as e:
             print('\tError: write failed, file may be corrupted.')
             continue
+        print('\tWarrior %s successfully written.' % name)
