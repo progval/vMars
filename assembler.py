@@ -48,7 +48,8 @@ class Assembler(object):
             addresser = operand[0] if operand[0] in SYNTAX.addressing else ''
             operand = operand[len(addresser):]
             for x in operand:
-                if x not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-*/%':
+                if x not in ('abcdefghijklmnopqrstuvwxyz'
+                        'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-*/%'):
                     raise ParseError('On line %i: `%s` is not a valid '%(j,x)+
                             'character')
             context = self._properties.as_dict
@@ -67,7 +68,6 @@ class Assembler(object):
         old_label = None
         for (j, line) in enumerate(assembly.split('\n')):
             label = None
-            line = line.upper()
             if SYNTAX.comment_line.match(line):
                 continue
             tokens = [x for x in line.split(' ') if x != '']
@@ -77,7 +77,7 @@ class Assembler(object):
                     label = label[0:-1]
             else:
                 label = None
-            splitted = tokens.pop(0).split('.')
+            splitted = tokens.pop(0).upper().split('.')
             if splitted[0] not in SYNTAX.opcodes:
                 raise ParseError('On line %i: `%s` is not a valid opcode.' %
                         (j, tokens[0]))
