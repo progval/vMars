@@ -1,0 +1,19 @@
+What is vMars ?
+===============
+
+vMars is a MARS (Memory Array Redcode Simulator), that's to say an
+implementation of the CoreWar game.
+The "v" stands for visual, as it is planned to add a graphical user
+interface and maybe a graphical debugger.
+
+vMars is written in Python and is available under the MIT license.
+
+
+Contributions
+=============
+
+vMars development uses Git and git-flow[1] as a branching model.
+
+Contributions can be made via GitHub pull requests, emails, ...
+
+[1] https://github.com/nvie/gitflow
