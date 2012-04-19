@@ -1,9 +1,15 @@
+#!/usr/bin/env python
 
 """This is the memory of the MARS."""
+
+from __future__ import print_function
 
 __all__ = ['RedcodeSyntaxError', 'Instruction', 'Mars', 'Memory', 'Warrior']
 
 import re
+
+if 'xrange' not in globals(): # Python 3
+    xrange = range
 
 def get_int(operand):
     """Shortcut for extracting the integer from an operand."""
@@ -350,8 +356,6 @@ class Memory(object):
         if not isinstance(size, int):
             raise ValueError('Memory size must be an integer, not %r' % size)
         self._size = size
-        if 'xrange' not in globals(): # Python 3
-            xrange = range
         self._memory = [Instruction('DAT', None, '$0', '$0')
                 for x in xrange(1, self.size)]
         self._loaded_warriors = {}
@@ -442,6 +446,7 @@ class MarsProperties(object):
 
 class Mars(object):
     def __init__(self, properties):
+        self._properties = properties
         self._memory = Memory(properties.coresize)
         self._warriors = []
 
@@ -467,7 +472,17 @@ class Mars(object):
         else:
             return warrior
 
+    def cycle(self):
+        warriors = []
+        for i in xrange(1, len(self._warriors)):
+            warrior = self.run()
+            if warrior is not None: # Warrior died
+                warriors.append(warrior)
+        return warriors
+
 class Warrior(object):
+    name = None
+    author = None
     def __init__(self, program='', origin=None):
         if origin is not None:
             if not isinstance(program, list):
@@ -479,6 +494,13 @@ class Warrior(object):
                         program)
             self._origin = origin
             self._initial_program = program
+            for line in program.split('\n'):
+                if not line.startswith(';'):
+                    break;
+                if line.startswith(';name '):
+                    self.name = line[len(';name '):]
+                elif line.startswith(';author '):
+                    self.author = line[len(';author '):]
         else:
             if isinstance(program, list):
                 raise ValueError('If you supply a list as the program, you '
@@ -498,6 +520,10 @@ class Warrior(object):
 
     def __eq__(self, other):
         return self._initial_program == other._initial_program
+
+    def __str__(self):
+        return '%s by %s' % (self.name or 'unnamed warrior',
+                self.author or 'anonymous')
 
     @property
     def threads(self):
@@ -522,3 +548,49 @@ class Warrior(object):
         self._threads.extend(new_threads)
         return (self._threads != []) # True if warrior is still alive
 
+if __name__ == '__main__':
+    import os
+    import sys
+    import argparse
+    parser = argparse.ArgumentParser(
+            description='Runs a bunch of warriors.')
+    parser.add_argument('warriors', metavar='warrior.rc', type=open,
+            nargs='+', help='warrior source codes.')
+
+    for (key, value) in MarsProperties().as_dict.items():
+        parser.add_argument('--' + key, default=value, type=int)
+
+    try:
+        args = vars(parser.parse_args())
+    except IOError as e: # Failed to open files
+        sys.stderr.write(str(e) + '\n')
+        sys.stderr.flush()
+        exit()
+
+    warriors = args.pop('warriors')
+
+    print('Booting MARS.')
+    properties = MarsProperties(**args)
+    mars = Mars(properties)
+
+    print('Loading warriors:')
+    warriors = [Warrior(x.read()) for x in warriors]
+    for warrior in warriors:
+        print(str(warrior))
+        mars.load(warrior)
+
+    print('Running processes.')
+    for cycle in xrange(1, properties.maxcycles):
+        dead_warriors = mars.cycle()
+        for warrior in dead_warriors:
+            warriors.remove(dead_warriors)
+            print('\tWarrior %s died at cycle %i' % warrior, cycle)
+        if len(mars.warriors) <= 1:
+            break
+
+    print('War ended at cycle %i.' % cycle)
+    for warrior in warriors:
+        if warrior in mars.warriors:
+            print('\t%s survived.' % warrior)
+        else:
+            print('\t%s died.' % warrior)

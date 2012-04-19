@@ -143,7 +143,7 @@ if __name__ == '__main__':
             description='Assembles a RedCode assembly file into a load file.')
     parser.add_argument('--force', '-f', action='store_true',
             help='determines whether existing files will be overwritten')
-    parser.add_argument('warriors', metavar='warrior.red', type=file,
+    parser.add_argument('warriors', metavar='warrior.red', type=open,
             nargs='+', help='file to be assembled')
 
     for (key, value) in core.MarsProperties().as_dict.items():
