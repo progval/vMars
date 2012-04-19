@@ -357,7 +357,7 @@ class Memory(object):
             raise ValueError('Memory size must be an integer, not %r' % size)
         self._size = size
         self._memory = [Instruction('DAT', None, '$0', '$0')
-                for x in xrange(1, self.size)]
+                for x in xrange(0, self.size)]
         self._loaded_warriors = {}
 
     @property
@@ -466,15 +466,18 @@ class Mars(object):
 
     def run(self):
         warrior = self._warriors.pop(0)
-        alive = warrior.run(self._memory)
+        try:
+            alive = warrior.run(self._memory)
+        except KeyboardInterrupt as e:
+            self._warriors.append(warrior)
+            raise e
         if alive:
             self._warriors.append(warrior)
         else:
             return warrior
-
     def cycle(self):
         warriors = []
-        for i in xrange(1, len(self._warriors)):
+        for i in xrange(0, len(self._warriors)):
             warrior = self.run()
             if warrior is not None: # Warrior died
                 warriors.append(warrior)
@@ -494,13 +497,6 @@ class Warrior(object):
                         program)
             self._origin = origin
             self._initial_program = program
-            for line in program.split('\n'):
-                if not line.startswith(';'):
-                    break;
-                if line.startswith(';name '):
-                    self.name = line[len(';name '):]
-                elif line.startswith(';author '):
-                    self.author = line[len(';author '):]
         else:
             if isinstance(program, list):
                 raise ValueError('If you supply a list as the program, you '
@@ -510,7 +506,12 @@ class Warrior(object):
             self._origin = 0
             self._initial_program = []
             for line in program.split('\n'):
-                if 'ORG ' in line:
+                if line.startswith(';'):
+                    if line.startswith(';name '):
+                        self.name = line[len(';name '):]
+                    elif line.startswith(';author '):
+                        self.author = line[len(';author '):]
+                elif 'ORG ' in line:
                     self._origin = int(line.split('ORG ')[1])
                 else:
                     inst = Instruction.from_string(line)
@@ -519,6 +520,8 @@ class Warrior(object):
         self._threads = None
 
     def __eq__(self, other):
+        if not isinstance(other, Warrior):
+            return False
         return self._initial_program == other._initial_program
 
     def __str__(self):
@@ -576,17 +579,25 @@ if __name__ == '__main__':
     print('Loading warriors:')
     warriors = [Warrior(x.read()) for x in warriors]
     for warrior in warriors:
-        print(str(warrior))
+        print('\t' + str(warrior))
         mars.load(warrior)
 
     print('Running processes.')
-    for cycle in xrange(1, properties.maxcycles):
-        dead_warriors = mars.cycle()
-        for warrior in dead_warriors:
-            warriors.remove(dead_warriors)
-            print('\tWarrior %s died at cycle %i' % warrior, cycle)
-        if len(mars.warriors) <= 1:
-            break
+    progress_step = int(properties.maxcycles/10)
+    progress = progress_step
+    try:
+        for cycle in xrange(1, properties.maxcycles+1):
+            progress += 1
+            if progress >= progress_step:
+                print('\t%i%%' % (100*cycle/properties.maxcycles))
+                progress = 0
+            dead_warriors = mars.cycle()
+            for warrior in dead_warriors:
+                print('\tWarrior %s died at cycle %i.' % (warrior, cycle))
+            if len(mars.warriors) <= 1:
+                break
+    except KeyboardInterrupt:
+        print('\tHalt signal got.')
 
     print('War ended at cycle %i.' % cycle)
     for warrior in warriors:
