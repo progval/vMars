@@ -28,12 +28,14 @@ __all__ = ['RedcodeSyntaxError', 'Instruction', 'Mars', 'Memory', 'Warrior']
 
 import re
 
+STRICT = True # Strict type and value checks. A bit time-consuming (~10%)
+
 if 'xrange' not in globals(): # Python 3
     xrange = range
 
 def get_int(operand):
     """Shortcut for extracting the integer from an operand."""
-    if len(operand) < 1:
+    if STRICT and len(operand) < 1:
         raise ValueError('%r is not a valid operand' % operand)
     if operand[0] in SYNTAX.addressing:
         if len(operand) < 1:
@@ -82,16 +84,19 @@ class Instruction(object):
         if len(data) == 0:
             if 'opcode' not in kwdata:
                 raise ValueError('Opcode is not given.')
-            self._data = {'modifier': None, 'A': '#0', 'B': '#0'}
-            self._data.update(kwdata)
+            data = {'modifier': None, 'A': '#0', 'B': '#0'}
+            data.update(kwdata)
+            data = [data['opcode'], data['modifier'], data['A'] or '$0',
+                    data['B'] or '$0']
         elif len(data) == 4:
-            self._data = dict(zip(SYNTAX.data_blocks, data))
+            data = [data[0], data[1], data[2] or '$0', data[3] or '$0']
         else:
             raise ValueError('When Instruction() is provided with '
                     'non-keyword arguments, they have to be 4.')
-        for block in SYNTAX.data_blocks:
-            # Check value of fields:
-            setattr(self, block, getattr(self, block))
+        self._data = [data[0], data[1],
+                data[2] if data[2][0] in SYNTAX.addressing else '$' + data[2],
+                data[3] if data[3][0] in SYNTAX.addressing else '$' + data[3],
+            ]
 
     def __eq__(self, other):
         if isinstance(other, str):
@@ -107,15 +112,15 @@ class Instruction(object):
                 self.__class__.__name__, str(self))
 
     def _get_opcode(self):
-        return self._data['opcode']
+        return self._data[0]
     def _set_opcode(self, value):
-        if value not in SYNTAX.opcodes:
+        if STRICT and value not in SYNTAX.opcodes:
             raise ValueError('%r is not a valid opcode.' % value)
-        self._data['opcode'] = value
+        self._data[0] = value
     opcode = property(_get_opcode, _set_opcode)
     def _get_modifier(self):
-        if self._data['modifier'] is not None:
-            return self._data['modifier']
+        if self._data[1] is not None:
+            return self._data[1]
         elif self.opcode in ('DAT', 'NOP'):
             return 'F'
         elif self.opcode in ('MOV', 'SEQ', 'SNE', 'CMP'):
@@ -140,31 +145,31 @@ class Instruction(object):
         elif self.opcode in ('JMP', 'JMZ', 'JMN', 'DJN', 'SPL'):
             return 'B'
     def _set_modifier(self, value):
-        if value not in SYNTAX.modifiers:
+        if STRICT and value not in SYNTAX.modifiers:
             raise ValueError('%r is not a valid modifier' % r)
-        self._data['modifier'] = value
+        self._data[1] = value
     modifier = property(_get_modifier, _set_modifier)
     def _get_A(self):
-        return self._data['A']
+        return self._data[2]
     def _set_A(self, value):
         if value is None:
             value = '$0'
         if value[0] in '0123456789-':
             value = '$' + value
-        if not SYNTAX.is_operand(value):
+        if STRICT and not SYNTAX.is_operand(value):
             raise ValueError('%r is not a valid operand' % value)
-        self._data['A'] = value
+        self._data[2] = value
     A = property(_get_A, _set_A)
     def _get_B(self):
-        return self._data['B']
+        return self._data[3]
     def _set_B(self, value):
         if value is None:
             value = '$0'
         if value[0] in '0123456789-':
             value = '$' + value
-        if not SYNTAX.is_operand(value):
+        if STRICT and not SYNTAX.is_operand(value):
             raise ValueError('%r is not a valid operand')
-        self._data['B'] = value
+        self._data[3] = value
     B = property(_get_B, _set_B)
 
     @classmethod
@@ -191,7 +196,7 @@ class Instruction(object):
     @classmethod
     def from_tuple(cls, tuple_):
         assert isinstance(tuple_, tuple) or isinstance(tuple_, list)
-        if len(tuple_) != 4:
+        if STRICT and len(tuple_) != 4:
             raise ValueError('%s is not a 4-tuple' % repr(tuple_))
         return cls(*tuple_)
 
@@ -201,11 +206,11 @@ class Instruction(object):
 
     @property
     def as_tuple(self):
-        return tuple([self._data[x] for x in SYNTAX.data_blocks])
+        return tuple(self._data)
     
     @property
     def as_dict(self):
-        return self._data.copy()
+        return dict(zip(SYNTAX.data_blocks, self._data))
 
 
     def _read(self, memory, ptr):
@@ -239,10 +244,10 @@ class Instruction(object):
                 # Add an opcode if needed, so it passes sanity checks
                 inst = (inst[0] or 'DAT', inst[1], inst[2], inst[3])
             inst = Instruction.from_tuple(inst)
-        elif not isinstance(inst, Instruction):
+        elif STRICT and not isinstance(inst, Instruction):
             raise ValueError('You can only write tuples and instructions, '
                     'not %r' % inst)
-        if not isinstance(dest, int):
+        if STRICT and not isinstance(dest, int):
             raise ValueError('Destination must be an int, not %r.' % dest)
 
         if m == 'A':
@@ -385,19 +390,19 @@ class Memory(object):
         return self._size
 
     def read(self, ptr):
-        if not isinstance(ptr, int):
+        if STRICT and not isinstance(ptr, int):
             raise ValueError('Pointer must be an integer, not %r' % ptr)
         ptr %= self.size
         return self._memory[ptr]
     def write(self, ptr, instruction=None, **kwargs):
-        if not isinstance(ptr, int):
+        if STRICT and not isinstance(ptr, int):
             raise ValueError('Pointer must be an integer, not %r' % ptr)
         ptr %= self.size
         if instruction is not None:
             if not isinstance(instruction, Instruction):
                 raise TypeError('The instruction parameter must be an '
                         'Instruction instance')
-            if kwargs != {}:
+            if STRICT and kwargs != {}:
                 raise ValueError('Cannot supply extra attribute if '
                         'instruction is given')
             self._memory[ptr] = instruction
@@ -410,9 +415,9 @@ class Memory(object):
             self.write(ptr, Instruction(**data))
 
     def get_absolute_ptr(self, base_ptr, value):
-        if len(value) < 2:
+        if STRICT and len(value) < 2:
             raise ValueError('The operand can be only A or B')
-        if not isinstance(base_ptr, int):
+        if STRICT and not isinstance(base_ptr, int):
             raise ValueError('Pointer must be an integer, not %r.' % base_ptr)
         ptr = base_ptr + get_int(value)
         char = value[0]
@@ -433,10 +438,10 @@ class Memory(object):
             return base_ptr + get_int(value2.B)
 
     def load(self, ptr, warrior):
-        if not isinstance(warrior, Warrior):
+        if STRICT and not isinstance(warrior, Warrior):
             raise ValueError('warrior must be an instance of Warrior, not %r.'%
                     warrior)
-        if not isinstance(ptr, int):
+        if STRICT and not isinstance(ptr, int):
             raise ValueError('Pointer must be an integer, not %r.' % ptr)
 
         for (i, inst) in enumerate(warrior.initial_program(ptr)):
@@ -453,7 +458,7 @@ class MarsProperties(object):
                 'mindistance': 100,
                 }
         for key in kwargs:
-            if key not in self._data:
+            if STRICT and key not in self._data:
                 raise ValueError('%r is not a known key.' % key)
         self._data.update(kwargs)
 
@@ -508,7 +513,7 @@ class Warrior(object):
     author = None
     def __init__(self, program='', origin=None):
         if origin is not None:
-            if not isinstance(program, list):
+            if STRICT and not isinstance(program, list):
                 raise ValueError('If you supply the `origin` argument, it '
                         'means you are giving a list of Instruction '
                         'instances, not %r' % program)
@@ -518,10 +523,10 @@ class Warrior(object):
             self._origin = origin
             self._initial_program = program
         else:
-            if isinstance(program, list):
+            if STRICT and isinstance(program, list):
                 raise ValueError('If you supply a list as the program, you '
                         'have to give the `origin` argument.')
-            elif not isinstance(program, str):
+            elif STRICT and not isinstance(program, str):
                 raise ValueError('Program must be a string, not %r.' % program)
             self._origin = 0
             self._initial_program = []
@@ -553,7 +558,7 @@ class Warrior(object):
         return [x for x in self._threads] # Shallow copy
 
     def initial_program(self, ptr=None):
-        if (self._threads is None) and (ptr is None):
+        if STRICT and (self._threads is None) and (ptr is None):
             raise ValueError('The load pointer must be provided before '
                     'accessing the program.')
         elif self._threads is None:
@@ -565,7 +570,7 @@ class Warrior(object):
         ptr = self._threads.pop(0)
         inst = memory.read(ptr)
         new_threads = inst.run(memory, ptr)
-        if not isinstance(new_threads, list):
+        if STRICT and not isinstance(new_threads, list):
             raise ValueError('Instruction.run must return a list, not %r.' %
                     new_threads)
         self._threads.extend(new_threads)
@@ -579,6 +584,8 @@ if __name__ == '__main__':
             description='Runs a bunch of warriors.')
     parser.add_argument('warriors', metavar='warrior.rc', type=open,
             nargs='+', help='warrior source codes.')
+    parser.add_argument('--laxist', '-l', action='store_true',
+            help='determines whether vMars will perform strict checks')
 
     for (key, value) in MarsProperties().as_dict.items():
         parser.add_argument('--' + key, default=value, type=int)
@@ -590,6 +597,7 @@ if __name__ == '__main__':
         sys.stderr.flush()
         exit()
 
+    STRICT = not args.pop('laxist')
     warriors = args.pop('warriors')
 
     print('Booting MARS.')
