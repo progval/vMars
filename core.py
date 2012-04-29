@@ -38,7 +38,7 @@ def get_int(operand):
     if STRICT and len(operand) < 1:
         raise ValueError('%r is not a valid operand' % operand)
     if operand[0] in SYNTAX.addressing:
-        if len(operand) < 1:
+        if STRICT and len(operand) == 0:
             raise ValueError('%r is not a valid operand' % operand)
         return int(operand[1:])
     else:
