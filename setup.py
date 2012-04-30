@@ -15,4 +15,7 @@ setup(
     ext_modules = ext_modules,
     packages = ['vmars'],
     package_dir = {'vmars': 'lib'},
+    scripts=['bin/vcore.py',
+            'bin/vasm.py',
+            ]
     )
