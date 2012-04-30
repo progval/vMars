@@ -1,6 +1,6 @@
 import unittest
 
-import core
+import vmars.core as core
 
 imp = 'MOV 0, 1'
 dwarf = '''
@@ -25,7 +25,8 @@ class TestInstruction(VMarsTestCase):
         inst = core.Instruction('MOV', 'X', '52', '@621')
         self.assertEqual(str(inst), 'MOV.X $52, @621')
 
-        self.assertEqual(repr(inst), '<core.Instruction \'MOV.X $52, @621\'>')
+        self.assertEqual(repr(inst),
+                '<vmars.core.Instruction \'MOV.X $52, @621\'>')
 
         inst2 = core.Instruction.from_string('MOV.X $52, @621')
         self.assertEqual(inst, inst2)
