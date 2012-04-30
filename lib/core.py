@@ -28,11 +28,25 @@ __all__ = ['RedcodeSyntaxError', 'Instruction', 'Mars', 'Memory', 'Warrior']
 
 import re
 
+try:
+    from cython import locals as cfunc
+    from cython import declare as cvar
+    import cython
+except ImportError:
+    def cfunc(**kwargs):
+        return lambda x:x
+    def cvar(**kwargs):
+        return lambda x:x
+    class cython:
+        def __getattr__(self, name):
+            return None
+
 STRICT = True # Strict type and value checks. A bit time-consuming (~10%)
 
 if 'xrange' not in globals(): # Python 3
     xrange = range
 
+@cfunc(operand=str)
 def get_int(operand):
     """Shortcut for extracting the integer from an operand."""
     if STRICT and len(operand) < 1:
@@ -77,6 +91,7 @@ class RedcodeSyntaxError(Exception):
     pass
 
 class Instruction(object):
+    _data = cvar(list)
     def __init__(self, *data, **kwdata):
         if data != () and kwdata != {}:
             raise ValueError('You cannot give data both as non-keyword '
@@ -146,7 +161,7 @@ class Instruction(object):
             return 'B'
     def _set_modifier(self, value):
         if STRICT and value not in SYNTAX.modifiers:
-            raise ValueError('%r is not a valid modifier' % r)
+            raise ValueError('%r is not a valid modifier' % value)
         self._data[1] = value
     modifier = property(_get_modifier, _set_modifier)
     def _get_A(self):
@@ -207,12 +222,13 @@ class Instruction(object):
     @property
     def as_tuple(self):
         return tuple(self._data)
-    
+
     @property
     def as_dict(self):
         return dict(zip(SYNTAX.data_blocks, self._data))
 
 
+    @cfunc(memory=object, ptr=int)
     def _read(self, memory, ptr):
         """Return input data of the instruction, based on modifiers.
 
@@ -236,6 +252,8 @@ class Instruction(object):
             return (A.as_tuple, B.as_tuple)
         else:
             assert False
+
+    @cfunc(memory=object, dest=int, inst=object)
     def _write(self, memory, dest, inst):
         """Writes data to the memory"""
         m = self.modifier
@@ -267,6 +285,7 @@ class Instruction(object):
         else:
             assert False
 
+    @cfunc(A=tuple, B=tuple, function=object)
     def _math(self, A, B, function):
         "Shortcut for running math operations."
         assert None not in (A[2], B[2])
@@ -276,6 +295,7 @@ class Instruction(object):
             assert B[3] is not None
             res2 = B[3][0]+str(function(get_int(A[3]), get_int(B[3])))
         return (B[0], B[1], res1, res2)
+    @cfunc(memory=object, ptr=int, field=str)
     def _increment(self, memory, ptr, field):
         "Shortcut for incrementing fields."
         inst = memory.read(ptr + get_int(field))
@@ -283,6 +303,7 @@ class Instruction(object):
             inst.A = inst.A[0] + str(int(inst.A[1:])+1)
         elif field.startswith('>'):
             inst.B = inst.B[0] + str(int(inst.B[1:])+1)
+    @cfunc(memory=object, ptr=int)
     def run(self, memory, ptr):
         assert memory.read(ptr) == self
 
@@ -377,6 +398,9 @@ class Instruction(object):
         return threads
 
 class Memory(object):
+    _memory = cvar(list)
+    _size = cvar(int)
+    _loaded_warriors = cvar(dict)
     def __init__(self, size):
         if not isinstance(size, int):
             raise ValueError('Memory size must be an integer, not %r' % size)
@@ -389,11 +413,13 @@ class Memory(object):
     def size(self):
         return self._size
 
+    @cfunc(ptr=int)
     def read(self, ptr):
         if STRICT and not isinstance(ptr, int):
             raise ValueError('Pointer must be an integer, not %r' % ptr)
         ptr %= self.size
         return self._memory[ptr]
+    @cfunc(ptr=int)
     def write(self, ptr, instruction=None, **kwargs):
         if STRICT and not isinstance(ptr, int):
             raise ValueError('Pointer must be an integer, not %r' % ptr)
@@ -414,6 +440,7 @@ class Memory(object):
             data.update(kwargs)
             self.write(ptr, Instruction(**data))
 
+    @cfunc(base_ptr=int, value=str)
     def get_absolute_ptr(self, base_ptr, value):
         if STRICT and len(value) < 2:
             raise ValueError('The operand can be only A or B')
@@ -437,6 +464,7 @@ class Memory(object):
         elif char in '<>':
             return base_ptr + get_int(value2.B)
 
+    @cfunc(ptr=int, warrior=object)
     def load(self, ptr, warrior):
         if STRICT and not isinstance(warrior, Warrior):
             raise ValueError('warrior must be an instance of Warrior, not %r.'%
