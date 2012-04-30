@@ -97,10 +97,13 @@ class Assembler(object):
                     label = label[0:-1]
             else:
                 label = None
+            if tokens == []:
+                raise ParseError('On line %i: `%s` is not a valid opcode.' %
+                        (j, label))
             splitted = tokens.pop(0).upper().split('.')
             if splitted[0] not in SYNTAX.opcodes:
                 raise ParseError('On line %i: `%s` is not a valid opcode.' %
-                        (j, tokens[0]))
+                        (j, splitted[0]))
             if len(splitted) > 2:
                 raise ParseError('On line %i: `%s` ' % (j, tokens[0]) +
                         'is not a valid opcode.modifier syntax.')

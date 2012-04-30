@@ -6,9 +6,9 @@ import assembler
 
 class TestAssembler(unittest.TestCase):
     def setUp(self):
-        self._assembleur = assembler.Assembler(core.MarsProperties())
+        self._assembler = assembler.Assembler(core.MarsProperties())
     def assemble(self, assembly):
-        return self._assembleur.assemble(assembly)
+        return self._assembler.assemble(assembly)
 
     def testLabels(self):
         self.assertEqual(self.assemble('imp MOV imp, imp+1')[1], ['MOV 0, 1'])
@@ -24,6 +24,9 @@ class TestAssembler(unittest.TestCase):
                           'DAT #0, #0'
                          ]
                         )
+    def testParse(self):
+        self.assertRaises(assembler.ParseError, self.assemble, 'ABC')
+        self.assertRaises(assembler.ParseError, self.assemble, 'ABC 5')
 
 
 if __name__ == '__main__':
