@@ -33,9 +33,9 @@ try:
     from cython import declare as cvar
     import cython
 except ImportError:
-    def cfunc(**kwargs):
+    def cfunc(*args, **kwargs):
         return lambda x:x
-    def cvar(**kwargs):
+    def cvar(*args, **kwargs):
         return lambda x:x
     class cython:
         def __getattr__(self, name):
@@ -233,6 +233,10 @@ class Instruction(object):
         """Return input data of the instruction, based on modifiers.
 
         Data with None should _never_ be read."""
+        m = cvar(str)
+        A = cvar(object)
+        B = cvar(object)
+
         m = self.modifier
         A = memory.read(memory.get_absolute_ptr(ptr, self.A))
         B = memory.read(memory.get_absolute_ptr(ptr, self.B))
@@ -256,6 +260,8 @@ class Instruction(object):
     @cfunc(memory=object, dest=int, inst=object)
     def _write(self, memory, dest, inst):
         """Writes data to the memory"""
+        m = cvar(str)
+
         m = self.modifier
         if isinstance(inst, tuple):
             if m != 'I':
@@ -288,6 +294,9 @@ class Instruction(object):
     @cfunc(A=tuple, B=tuple, function=object)
     def _math(self, A, B, function):
         "Shortcut for running math operations."
+        res1 = cvar(str)
+        res2 = cvar(str)
+
         assert None not in (A[2], B[2])
         res1 = B[2][0]+str(function(get_int(A[2]), get_int(B[2])))
         res2 = None
@@ -298,6 +307,8 @@ class Instruction(object):
     @cfunc(memory=object, ptr=int, field=str)
     def _increment(self, memory, ptr, field):
         "Shortcut for incrementing fields."
+        inst = cvar(object)
+
         inst = memory.read(ptr + get_int(field))
         if field.startswith('}'):
             inst.A = inst.A[0] + str(int(inst.A[1:])+1)
@@ -305,6 +316,12 @@ class Instruction(object):
             inst.B = inst.B[0] + str(int(inst.B[1:])+1)
     @cfunc(memory=object, ptr=int)
     def run(self, memory, ptr):
+        oc = cvar(str)
+        dest = cvar(int)
+        A = cvar(object)
+        B = cvar(object)
+        threads = cvar(list)
+
         assert memory.read(ptr) == self
 
         # Predecrement
@@ -322,8 +339,7 @@ class Instruction(object):
         self._increment(memory, ptr, self.A)
         dest = memory.get_absolute_ptr(ptr, self.B)
         self._increment(memory, ptr, self.B)
-        A = self._read(memory, ptr)[0]
-        B = self._read(memory, ptr)[1]
+        A, B = self._read(memory, ptr)
 
         if oc == 'DAT':
             threads = []
@@ -475,7 +491,7 @@ class Memory(object):
         for (i, inst) in enumerate(warrior.initial_program(ptr)):
             if inst is not None:
                 self.write(ptr + i, inst)
-            
+
 class MarsProperties(object):
     def __init__(self, **kwargs):
         self._data = {
