@@ -4,6 +4,9 @@ from vmars.core import Mars, MarsProperties, Warrior
 
 import vmars.core as core
 
+if 'xrange' not in globals():
+    xrange = range
+
 if __name__ == '__main__':
     import os
     import sys
