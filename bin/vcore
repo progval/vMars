@@ -55,3 +55,9 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('\tHalt signal got.')
 
+    print('War ended at cycle %i.' % cycle)
+    for warrior in warriors:
+        if warrior in mars.warriors:
+            print('\t%s survived.' % warrior)
+        else:
+            print('\t%s died.' % warrior)
