@@ -27,6 +27,7 @@ from __future__ import print_function
 __all__ = ['RedcodeSyntaxError', 'Instruction', 'Mars', 'Memory', 'Warrior']
 
 import re
+import collections
 
 try:
     from cython import locals as cfunc
@@ -421,8 +422,8 @@ class Memory(object):
         if not isinstance(size, int):
             raise ValueError('Memory size must be an integer, not %r' % size)
         self._size = size
-        self._memory = [Instruction('DAT', None, '$0', '$0')
-                for x in xrange(0, self.size)]
+        self._memory = collections.deque([Instruction('DAT', None, '$0', '$0')
+                for x in xrange(0, self.size)], self.size)
         self._loaded_warriors = {}
 
     @property
@@ -437,6 +438,7 @@ class Memory(object):
         return self._memory[ptr]
     @cfunc(ptr=int)
     def write(self, ptr, instruction=None, **kwargs):
+        data = cvar(dict)
         if STRICT and not isinstance(ptr, int):
             raise ValueError('Pointer must be an integer, not %r' % ptr)
         ptr %= self.size
