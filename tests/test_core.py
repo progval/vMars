@@ -258,6 +258,18 @@ class TestMemory(VMarsTestCase):
             self.assertEqual(self._memory.read(ptr), inst)
             ptr += 1
 
+    def testCallback(self):
+        global cb_data
+        cb_data = None
+        inst1 = core.Instruction.from_string('MOV 5, 2')
+        inst2 = core.Instruction.from_string('DAT')
+        def cb(ptr, old_inst, new_inst):
+            global cb_data
+            cb_data = (ptr, old_inst, new_inst)
+        self._memory.add_callback(cb)
+        self._memory.write(5, inst1)
+        self.assertEqual(cb_data, (5, inst2, inst1))
+
 class TestWarrior(VMarsTestCase):
     def testCompiledLoad(self):
         self.assertEqual(core.Warrior(imp),
