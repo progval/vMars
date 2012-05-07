@@ -73,11 +73,12 @@ class MemoryView(QtGui.QLabel):
         self._memory.add_callback(self.onMemoryUpdate)
         self._painting = threading.Lock()
         self._paint_queue = collections.deque()
-        self._image = QtGui.QPixmap(400, 400)
-        self._image.fill(QtCore.Qt.yellow)
+        if parent is None:
+            self.resize(700, 500)
+        self._image = QtGui.QPixmap(self.width(), self.height())
+        self._image.fill(QtCore.Qt.transparent)
         self.setPixmap(self._image)
         self._painter = QtGui.QPainter()
-        self.resize(400, 400)
         self.drawInstruction.connect(self.onDrawInstruction)
 
     def show(self):
@@ -91,7 +92,7 @@ class MemoryView(QtGui.QLabel):
 
     def redraw(self):
         self._thread = InitializationThread(self)
-        self._thread.run() # FIXME: use .start() instead
+        self._thread.run()
 
     drawInstruction = QtCore.pyqtSignal(int, object, bool)
 
