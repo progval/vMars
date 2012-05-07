@@ -556,6 +556,10 @@ class Mars(object):
         return self._memory
 
     @property
+    def properties(self):
+        return self._properties
+
+    @property
     def warriors(self):
         return self._warriors
 

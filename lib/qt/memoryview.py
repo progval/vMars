@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2012, Valentin Lorentz
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -28,7 +26,15 @@ import collections
 
 from PyQt4 import QtCore, QtGui
 
-CELL_SIZE = 10.0 # Used for float division
+CELL_SIZE = 5.0 # Used for float division
+
+def exitOnKeyboardInterrupt(f):
+    def newf(*args, **kwargs):
+        try:
+            f(*args, **kwargs)
+        except KeyboardInterrupt:
+            exit()
+    return newf
 
 opcode2color = {
     # Math
@@ -60,14 +66,24 @@ opcode2color = {
     'NOP': QtCore.Qt.transparent
 }
 
-
-class MemoryView(QtGui.QWidget):
+class MemoryView(QtGui.QLabel):
     def __init__(self, memory, parent=None):
         super(MemoryView, self).__init__(parent)
         self._memory = memory
-        self._painting = threading.RLock()
+        self._memory.add_callback(self.onMemoryUpdate)
+        self._painting = threading.Lock()
+        self._paint_queue = collections.deque()
+        self._image = QtGui.QPixmap(400, 400)
+        self._image.fill(QtCore.Qt.yellow)
+        self.setPixmap(self._image)
+        self._painter = QtGui.QPainter()
+        self.resize(400, 400)
+        self.drawInstruction.connect(self.onDrawInstruction)
 
+    def show(self):
+        super(MemoryView, self).show()
         self.resizeEvent()
+        self.redraw()
 
     def resizeEvent(self, resizeEvent=None):
         self.cols = math.floor((self.width())/CELL_SIZE) - 1
@@ -77,43 +93,41 @@ class MemoryView(QtGui.QWidget):
         self._thread = InitializationThread(self)
         self._thread.run() # FIXME: use .start() instead
 
-    def paintEvent(self, paintEvent):
-        self._painter = QtGui.QPainter()
-        self.redraw()
-        self._memory.add_callback(self.onMemoryUpdate)
+    drawInstruction = QtCore.pyqtSignal(int, object, bool)
 
-    def drawInstruction(self, ptr, instruction, pop=True):
-        rectangle = QtCore.QRectF((ptr % self.cols)*CELL_SIZE,
+    @exitOnKeyboardInterrupt
+    def onDrawInstruction(self, ptr, instruction, update):
+        rectangle = QtCore.QRect(
+                 (ptr % self.cols)*CELL_SIZE,
                  math.floor(ptr/float(self.cols))*CELL_SIZE,
                  CELL_SIZE,
                  CELL_SIZE)
-        try:
-            self._painting.acquire()
-            self._painter.begin(self)
-            self._painter.fillRect(rectangle,
-                    opcode2color[instruction.opcode])
-        finally:
-            self._painting.release()
-            self._painter.end()
+        color = opcode2color[instruction.opcode]
+        self._painting.acquire()
+        self._painter.begin(self._image)
+        self._painter.fillRect(rectangle, color)
+        self._painter.end()
+        self._painting.release()
+        self.repaint()
+        if update:
+            self.setPixmap(self._image)
 
     def onMemoryUpdate(self, ptr, old_inst, new_inst):
-        self.drawInstruction(ptr, new_inst)
+        self.drawInstruction.emit(ptr, new_inst, True)
 
     def __del__(self):
-        self._painter.end()
-        super(MemoryView, self).__del__()
+        if hasattr(self, '_painter'):
+            self._painter.end()
 
 
 class InitializationThread(QtCore.QThread):
     def __init__(self, widget):
         super(InitializationThread, self).__init__()
         self._widget = widget
-        self.drawInstruction.connect(self._widget.drawInstruction)
 
     def run(self):
-        self._widget._memory.lock.acquire()
-        for ptr, instruction in enumerate(self._widget._memory.as_list):
-            self.drawInstruction.emit(ptr, instruction, False)
-        self._widget._memory.lock.release()
+        with self._widget._memory.lock:
+            for ptr, instruction in enumerate(self._widget._memory.as_list):
+                self._widget.drawInstruction.emit(ptr, instruction, False)
+            self._widget.drawInstruction.emit(ptr, instruction, True)
 
-    drawInstruction = QtCore.pyqtSignal(int, object, bool)

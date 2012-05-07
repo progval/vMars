@@ -7,7 +7,7 @@ import vmars.core as core
 if 'xrange' not in globals():
     xrange = range
 
-if __name__ == '__main__':
+def main():
     import os
     import sys
     import argparse
@@ -17,6 +17,8 @@ if __name__ == '__main__':
             nargs='+', help='warrior source codes.')
     parser.add_argument('--laxist', '-l', action='store_true',
             help='determines whether vMars will perform strict checks')
+    parser.add_argument('--gui', '-g', action='store_true',
+            help='determines whether the GUI will be used')
 
     for (key, value) in MarsProperties().as_dict.items():
         parser.add_argument('--' + key, default=value, type=int)
@@ -28,7 +30,8 @@ if __name__ == '__main__':
         sys.stderr.flush()
         exit()
 
-    STRICT = not args.pop('laxist')
+    gui = args.pop('gui')
+    core.STRICT = not args.pop('laxist')
     warriors = args.pop('warriors')
 
     print('Booting MARS.')
@@ -41,19 +44,34 @@ if __name__ == '__main__':
         print('\t' + str(warrior))
         mars.load(warrior)
 
+    if gui:
+        print('Starting GUI.')
+        from vmars.qt.callbackapplication import CallbackApplication
+        from vmars.qt.memoryview import MemoryView
+        app = CallbackApplication(sys.argv)
+        class MemoryView2(MemoryView):
+            def closeEvent(self, event):
+                exit()
+        mv = MemoryView2(mars.memory)
+        mv.show()
+        app.exec_(run_warriors, (mv, mars, warriors, gui))
+    else:
+        run_warriors(None, mars, warriors, False)
+
+def run_warriors(win, mars, warriors, gui):
     print('Running processes.')
-    progress_step = int(properties.maxcycles/10)
+    progress_step = int(mars.properties.maxcycles/10)
     progress = progress_step
     try:
-        for cycle in xrange(1, properties.maxcycles+1):
+        for cycle in xrange(1, mars.properties.maxcycles+1):
             progress += 1
             if progress >= progress_step:
-                print('\t%i%%' % (100*cycle/properties.maxcycles))
+                print('\t%i%%' % (100*cycle/mars.properties.maxcycles))
                 progress = 0
             dead_warriors = mars.cycle()
             for warrior in dead_warriors:
                 print('\tWarrior %s died at cycle %i.' % (warrior, cycle))
-            if len(mars.warriors) <= 1:
+            if mars.warriors == []:
                 break
     except KeyboardInterrupt:
         print('\tHalt signal got.')
@@ -64,3 +82,10 @@ if __name__ == '__main__':
             print('\t%s survived.' % warrior)
         else:
             print('\t%s died.' % warrior)
+
+    if gui:
+        win.close()
+
+
+if __name__ == '__main__':
+    main()
