@@ -453,11 +453,8 @@ class Memory(object):
         if STRICT and not isinstance(ptr, int):
             raise ValueError('Pointer must be an integer, not %r' % ptr)
         ptr %= self.size
-        try:
-            self._lock.acquire()
+        with self._lock:
             return self._memory[ptr]
-        finally:
-            self._lock.release()
     @cfunc(ptr=int)
     def write(self, ptr, instruction=None, **kwargs):
         data = cvar(dict)
@@ -472,12 +469,9 @@ class Memory(object):
             if STRICT and kwargs != {}:
                 raise ValueError('Cannot supply extra attribute if '
                         'instruction is given')
-            try:
-                self._lock.acquire()
+            with self._lock:
                 old_instruction = self._memory[ptr]
                 self._memory[ptr] = instruction
-            finally:
-                self._lock.release()
             for callback in self._callbacks:
                 callback(ptr, old_instruction, instruction)
         else:

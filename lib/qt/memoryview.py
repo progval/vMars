@@ -78,7 +78,7 @@ class MemoryView(QtGui.QLabel):
         self._image = QtGui.QPixmap(self.width(), self.height())
         self._image.fill(QtCore.Qt.transparent)
         self._painter = QtGui.QPainter()
-        self._cache = collections.deque(maxlen=10)
+        self._cache = collections.deque(maxlen=100)
 
     def show(self):
         super(MemoryView, self).show()
@@ -129,7 +129,7 @@ class MemoryView(QtGui.QLabel):
             self._painter.end()
 
     def onMemoryUpdate(self, ptr, old_inst, new_inst):
-        if old_inst.opcode == new_inst.opcode:
+        if old_inst.opcode == new_inst.opcode and len(self._cache) == 0:
             return
         with self.painting:
             self.drawInstruction(ptr, new_inst, False)
