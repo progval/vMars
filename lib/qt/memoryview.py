@@ -71,15 +71,14 @@ class MemoryView(QtGui.QLabel):
         super(MemoryView, self).__init__(parent)
         self._memory = memory
         self._memory.add_callback(self.onMemoryUpdate)
-        self._painting = threading.Lock()
+        self.painting = threading.Lock()
         self._paint_queue = collections.deque()
         if parent is None:
             self.resize(700, 500)
         self._image = QtGui.QPixmap(self.width(), self.height())
         self._image.fill(QtCore.Qt.transparent)
-        self.setPixmap(self._image)
         self._painter = QtGui.QPainter()
-        self.drawInstruction.connect(self.onDrawInstruction)
+        self._cache = collections.deque(maxlen=10)
 
     def show(self):
         super(MemoryView, self).show()
@@ -91,44 +90,50 @@ class MemoryView(QtGui.QLabel):
         self.lines = math.ceil(self._memory.size/float(self.cols))
 
     def redraw(self):
-        self._thread = InitializationThread(self)
-        self._thread.run()
-
-    drawInstruction = QtCore.pyqtSignal(int, object, bool)
+        with self.painting:
+            for ptr, instruction in enumerate(self._memory.as_list):
+                self.drawInstruction(ptr, instruction, True)
+            self.setPixmap(self._image)
 
     @exitOnKeyboardInterrupt
-    def onDrawInstruction(self, ptr, instruction, update):
+    def paintEvent(self, event):
+        super(MemoryView, self).paintEvent(event)
+        self._draw(self)
+
+    @exitOnKeyboardInterrupt
+    def drawInstruction(self, ptr, instruction, init):
         rectangle = QtCore.QRect(
                  (ptr % self.cols)*CELL_SIZE,
                  math.floor(ptr/float(self.cols))*CELL_SIZE,
                  CELL_SIZE,
                  CELL_SIZE)
         color = opcode2color[instruction.opcode]
-        self._painting.acquire()
-        self._painter.begin(self._image)
-        self._painter.fillRect(rectangle, color)
-        self._painter.end()
-        self._painting.release()
-        self.repaint()
-        if update:
-            self.setPixmap(self._image)
+        self._cache.append((rectangle, color))
+        if len(self._cache) == self._cache.maxlen:
+            self._draw(self._image)
+            self._cache.clear()
+            if not init:
+                self.setPixmap(self._image)
+        if not init:
+            self.repaint()
+
+    @exitOnKeyboardInterrupt
+    def _draw(self, target):
+        try:
+            self._painter.begin(target)
+            self._painter.beginNativePainting()
+            for rectangle, color in self._cache:
+                self._painter.fillRect(rectangle, color)
+        finally:
+            self._painter.endNativePainting()
+            self._painter.end()
 
     def onMemoryUpdate(self, ptr, old_inst, new_inst):
-        self.drawInstruction.emit(ptr, new_inst, True)
+        if old_inst.opcode == new_inst.opcode:
+            return
+        with self.painting:
+            self.drawInstruction(ptr, new_inst, False)
 
     def __del__(self):
         if hasattr(self, '_painter'):
             self._painter.end()
-
-
-class InitializationThread(QtCore.QThread):
-    def __init__(self, widget):
-        super(InitializationThread, self).__init__()
-        self._widget = widget
-
-    def run(self):
-        with self._widget._memory.lock:
-            for ptr, instruction in enumerate(self._widget._memory.as_list):
-                self._widget.drawInstruction.emit(ptr, instruction, False)
-            self._widget.drawInstruction.emit(ptr, instruction, True)
-
