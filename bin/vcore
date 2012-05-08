@@ -7,60 +7,119 @@ import vmars.core as core
 if 'xrange' not in globals():
     xrange = range
 
-if __name__ == '__main__':
-    import os
-    import sys
-    import argparse
-    parser = argparse.ArgumentParser(
-            description='Runs a bunch of warriors.')
-    parser.add_argument('warriors', metavar='warrior.rc', type=open,
-            nargs='+', help='warrior source codes.')
-    parser.add_argument('--laxist', '-l', action='store_true',
-            help='determines whether vMars will perform strict checks')
+class Main:
+    def __init__(self):
+        self.parse_args()
+        self.boot()
+        if self.gui:
+            self.init_gui()
+        else:
+            print('Running processes.')
+            self.init_console()
 
-    for (key, value) in MarsProperties().as_dict.items():
-        parser.add_argument('--' + key, default=value, type=int)
+    def parse_args(self):
+        import os
+        import sys
+        import argparse
+        parser = argparse.ArgumentParser(
+                description='Runs a bunch of warriors.')
+        parser.add_argument('warriors', metavar='warrior.rc', type=open,
+                nargs='+', help='warrior source codes.')
+        parser.add_argument('--laxist', '-l', action='store_true',
+                help='determines whether vMars will perform strict checks')
+        parser.add_argument('--gui', '-g', action='store_true',
+                help='determines whether the GUI will be used')
 
-    try:
-        args = vars(parser.parse_args())
-    except IOError as e: # Failed to open files
-        sys.stderr.write(str(e) + '\n')
-        sys.stderr.flush()
+        for (key, value) in MarsProperties().as_dict.items():
+            parser.add_argument('--' + key, default=value, type=int)
+
+        try:
+            args = vars(parser.parse_args())
+        except IOError as e: # Failed to open files
+            sys.stderr.write(str(e) + '\n')
+            sys.stderr.flush()
+            exit()
+
+        self.gui = args.pop('gui')
+        core.STRICT = not args.pop('laxist')
+        self.warriors = args.pop('warriors')
+        self.properties = MarsProperties(**args)
+
+    def boot(self):
+        print('Booting MARS.')
+        self.mars = Mars(self.properties)
+
+        print('Loading warriors:')
+        self.warriors = [Warrior(x.read()) for x in self.warriors]
+        for warrior in self.warriors:
+            print('\t' + str(warrior))
+            self.mars.load(warrior)
+            self.progress = 0
+            self.progress_step = int(self.mars.properties.maxcycles/10)
+            self.cycle = 0
+
+    def init_gui(self):
+        print('Starting GUI.')
+        import sys
+        from PyQt4.QtGui import QApplication
+        from PyQt4.QtCore import QTimer
+        from vmars.qt.callbackapplication import CallbackApplication
+        from vmars.qt.memoryview import MemoryView
+        app = QApplication(sys.argv)
+        class MemoryView2(MemoryView):
+            def closeEvent(self2, event):
+                # If the program stops unexpectly, try to uncomment the
+                # following line, so it will display Python errors that
+                # are hidden by Qt:
+                # return
+                self.on_end()
+        self.mv = MemoryView2(self.mars.memory)
+        self.mv.show()
+        print('Running processes.')
+        def run():
+            try:
+                while self.on_tick():
+                    self.mv.painting.acquire() # Wait for it to finish painting
+                    self.mv.painting.release()
+            finally:
+                self.on_end()
+        self.timer = QTimer()
+        self.timer.timeout.connect(run)
+        self.timer.start(0)
+        app.exec_()
+    def init_console(self):
+        try:
+            while self.on_tick():
+                pass
+        except KeyboardInterrupt:
+            print('\tHalt signal got.')
+        self.on_end()
+    
+    def on_tick(self):
+        self.progress += 1
+        self.cycle += 1
+        if self.progress >= self.progress_step:
+            print('\t%i%%' % (100*self.cycle/self.mars.properties.maxcycles))
+            self.progress = 0
+        dead_warriors = self.mars.cycle()
+        for warrior in dead_warriors:
+            print('\tWarrior %s died at cycle %i.' % (warrior, self.cycle))
+        if self.mars.warriors == [] and self.gui:
+            self.mv.close()
+            return False
+        return (self.mars.warriors != [] and 
+                self.cycle < self.mars.properties.maxcycles)
+
+
+    def on_end(self):
+        print('War ended at cycle %i.' % self.cycle)
+        for warrior in self.warriors:
+            if warrior in self.mars.warriors:
+                print('\t%s survived.' % warrior)
+            else:
+                print('\t%s died.' % warrior)
         exit()
 
-    STRICT = not args.pop('laxist')
-    warriors = args.pop('warriors')
 
-    print('Booting MARS.')
-    properties = MarsProperties(**args)
-    mars = Mars(properties)
-
-    print('Loading warriors:')
-    warriors = [Warrior(x.read()) for x in warriors]
-    for warrior in warriors:
-        print('\t' + str(warrior))
-        mars.load(warrior)
-
-    print('Running processes.')
-    progress_step = int(properties.maxcycles/10)
-    progress = progress_step
-    try:
-        for cycle in xrange(1, properties.maxcycles+1):
-            progress += 1
-            if progress >= progress_step:
-                print('\t%i%%' % (100*cycle/properties.maxcycles))
-                progress = 0
-            dead_warriors = mars.cycle()
-            for warrior in dead_warriors:
-                print('\tWarrior %s died at cycle %i.' % (warrior, cycle))
-            if len(mars.warriors) <= 1:
-                break
-    except KeyboardInterrupt:
-        print('\tHalt signal got.')
-
-    print('War ended at cycle %i.' % cycle)
-    for warrior in warriors:
-        if warrior in mars.warriors:
-            print('\t%s survived.' % warrior)
-        else:
-            print('\t%s died.' % warrior)
+if __name__ == '__main__':
+    Main()

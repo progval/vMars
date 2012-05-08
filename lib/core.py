@@ -27,6 +27,7 @@ from __future__ import print_function
 __all__ = ['RedcodeSyntaxError', 'Instruction', 'Mars', 'Memory', 'Warrior']
 
 import re
+import threading
 import collections
 
 try:
@@ -418,6 +419,7 @@ class Memory(object):
     _memory = cvar(list)
     _size = cvar(int)
     _loaded_warriors = cvar(dict)
+    _lock = cvar(object)
     def __init__(self, size):
         if not isinstance(size, int):
             raise ValueError('Memory size must be an integer, not %r' % size)
@@ -425,20 +427,38 @@ class Memory(object):
         self._memory = collections.deque([Instruction('DAT', None, '$0', '$0')
                 for x in xrange(0, self.size)], self.size)
         self._loaded_warriors = {}
+        self._callbacks = []
+        self._lock = threading.RLock()
+
+    @cfunc(callback=object)
+    def add_callback(self, callback):
+        if callback not in self._callbacks:
+            self._callbacks.append(callback)
+    @cfunc(callback=object)
+    def remove_callback(self, callback):
+        self._callbacks.remove(callback)
 
     @property
     def size(self):
         return self._size
+    @property
+    def lock(self):
+        return self._lock
+    @property
+    def as_list(self):
+        return self._memory
 
     @cfunc(ptr=int)
     def read(self, ptr):
         if STRICT and not isinstance(ptr, int):
             raise ValueError('Pointer must be an integer, not %r' % ptr)
         ptr %= self.size
-        return self._memory[ptr]
+        with self._lock:
+            return self._memory[ptr]
     @cfunc(ptr=int)
     def write(self, ptr, instruction=None, **kwargs):
         data = cvar(dict)
+        old_instruction = cvar(object)
         if STRICT and not isinstance(ptr, int):
             raise ValueError('Pointer must be an integer, not %r' % ptr)
         ptr %= self.size
@@ -449,7 +469,11 @@ class Memory(object):
             if STRICT and kwargs != {}:
                 raise ValueError('Cannot supply extra attribute if '
                         'instruction is given')
-            self._memory[ptr] = instruction
+            with self._lock:
+                old_instruction = self._memory[ptr]
+                self._memory[ptr] = instruction
+            for callback in self._callbacks:
+                callback(ptr, old_instruction, instruction)
         else:
             for key in kwargs:
                 if key not in SYNTAX.data_blocks:
@@ -524,6 +548,10 @@ class Mars(object):
     @property
     def memory(self):
         return self._memory
+
+    @property
+    def properties(self):
+        return self._properties
 
     @property
     def warriors(self):
